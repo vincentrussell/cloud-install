@@ -1,0 +1,7 @@
+.DS_Store
+.idea/
+.lein-repl-history
+*.iml
+target/
+pom.xml
+dependencies/*.tar.gz
