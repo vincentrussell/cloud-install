@@ -119,13 +119,13 @@
   "install the cloud stack"
   ([project]
     (do
-      (prn "Please run the script like this:
-    lein install-stack <<install_dir>> <<accumulo_instance_name>> <<accumulo_root_password>>")
+      (prn (str "Please run the script like this" (newline)
+    "lein install-stack <<install_dir>> <<accumulo_instance_name>> <<accumulo_root_password>>"))
       (System/exit 1)))
   ([project & args]
   (do
-    (prn "We are going to download the big files in order to not have to check them into git.\n\n
-     THIS MAY TAKE A WHILE TO DOWNLOAD THEM!")
+    (prn (str "We are going to download the big files in order to not have to check them into git." (newline) (newline)
+     "THIS MAY TAKE A WHILE TO DOWNLOAD THEM!"))
     (check-dependencies project args)
     (let [selected-directory (if (seq args) (first args) (select-directory))
           install-directory (str selected-directory "/" cloud-install-install-directory)
@@ -133,8 +133,7 @@
           accumulo-instance-name (if (= 3 (count (seq args) )) (nth args 1) "accumulo")
           accumulo-root-password (if (= 3 (count (seq args) )) (nth args 2) "secret")
           install-locs-map {:zookeeper (str install-directory "/" zookeeper-version) :accumulo (str install-directory "/" accumulo-version) :hadoop (str install-directory "/" hadoop-version)}]
-      (if (.exists  selected-directory-file) (prn (str "Installing in " install-directory)) (throw (Exception. "Specified installed directory doesn't exist")))
-      (shell-out "mkdir" "-p" install-directory)
+      (run-command-with-no-args  (str "mkdir -p " install-directory))
       (install-hadoop install-directory install-locs-map)
       (install-zookeeper install-directory install-locs-map)
       (install-accumulo install-directory install-locs-map)
@@ -143,5 +142,5 @@
       (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)
       (prn "Completed Successfully!")
       (prn (str "And we're done.  You should add the following to your
-      bashrc in order to be able to run some of the executables like accumulo:\n\n
-      source " (str install-directory "/cloud-install-bash-include.sh")))))))
+      bashrc in order to be able to run some of the executables like accumulo:" (newline) (newline)
+      "source " (str install-directory "/cloud-install-bash-include.sh")))))))
