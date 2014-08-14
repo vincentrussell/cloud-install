@@ -12,6 +12,12 @@
 (def accumulo-version "accumulo-1.5.1")
 (def accumulo-dist-location (str "dependencies/" accumulo-version ".tar.gz"))
 
+(defn replace-text-in-file
+  [file-path regex-replacement-map]
+  (doseq [keyval regex-replacement-map]
+    (let [file-text (slurp file-path)
+          new-text (.replaceAll file-text (key keyval) (val keyval))]
+      (spit file-path new-text))))
 
 
 (defn install-hadoop
@@ -31,11 +37,12 @@
     (run-command-with-no-args (str "cp -R " hadoop-mapred-webapps-dir " " install-directory "/" hadoop-version))
     (flat-copy (File. (str install-directory "/" hadoop-version "/etc/hadoop-mapreduce1-pseudo" )) (File. (str install-directory "/" hadoop-version "/etc/hadoop" )))
     (spit hdfs-site-full-path  (.replaceAll (slurp hdfs-site-full-path) "<!-- Enable Hue Plugins -->[\\S\\s]*</configuration>"  "</configuration>"))
-    (shell-out "sed" "-i" ".bak" (str "s/\\/var\\/lib\\/hadoop-0.20/" (clojure.string/replace (str "file://" install-directory "/" hadoop-version) "/" "\\/") "/g") hdfs-site-full-path)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/var\\/lib\\/hadoop-0.20/" (clojure.string/replace (str install-directory "/" hadoop-version) "/" "\\/") "/g") core-site-full-path)
+    (replace-text-in-file hdfs-site-full-path {"/var/lib/hadoop-0.20" (str "file://" install-directory "/" hadoop-version)})
+    (replace-text-in-file core-site-full-path {"/var/lib/hadoop-0.20" (str install-directory "/" hadoop-version)})
     (spit slaves-full-path "localhost\n")
     (prn "Formatting name node!")
-    (shell-out (str install-directory "/" hadoop-version "/bin/hdfs") "namenode" "-format" )
+    (shell-out (str install-directory "/" hadoop-version "/bin/hdfs") "namenode" "-format" "-force" )
+    (prn "Done Formatting name node!")
     (shell-out "rm" destination-full-path)))
 
 (defn install-zookeeper
@@ -62,14 +69,14 @@
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
     (flat-copy (File. (str install-directory "/" accumulo-version "/conf/examples/1GB/standalone" )) (File. (str install-directory "/" accumulo-version "/conf" )))
     (spit accumulo-site-xml-file  (.replaceAll (slurp accumulo-site-xml-file) "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"  "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/lib/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/hdfs/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/mapreduce/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/yarn/.*.jar,"))
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/zookeeper/" (clojure.string/replace (get install-locs-map :zookeeper) "/" "\\/") "/g")  accumulo-env-full-path)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/hadoop/" (clojure.string/replace (get install-locs-map :hadoop) "/" "\\/") "/g")  accumulo-env-full-path)
+    (replace-text-in-file accumulo-env-full-path {"/path/to/zookeeper" (get install-locs-map :zookeeper) "/path/to/hadoop" (get install-locs-map :hadoop)})
     (shell-out "rm" destination-full-path)))
 
 
 (defn install-scripts
   [install-directory install-locs-map]
   (let [zookeeper-server-sh-file (str install-directory "/zookeeper-server.sh")
+        zookeeper-init-sh-file (str install-directory "/zookeeper-init.sh")
         start-hadoop-sh-file (str install-directory "/start-hadoop.sh")
         stop-hadoop-sh-file (str install-directory "/stop-hadoop.sh")
         stop-zookeeper-sh-file (str install-directory "/stop-zookeper.sh")
@@ -77,12 +84,12 @@
         cloud-install-bash-include-sh-file (str install-directory "/cloud-install-bash-include.sh")
         chmod-script (str install-directory "/chmod-script.sh")]
     (flat-copy (File. "dependencies/scripts") (File. install-directory))
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/zookeeper/" (clojure.string/replace (get install-locs-map :zookeeper) "/" "\\/") "/g") zookeeper-server-sh-file)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/hadoop/" (clojure.string/replace (get install-locs-map :hadoop) "/" "\\/") "/g") start-hadoop-sh-file)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/hadoop/" (clojure.string/replace (get install-locs-map :hadoop) "/" "\\/") "/g") stop-hadoop-sh-file)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/hadoop/" (clojure.string/replace (get install-locs-map :hadoop) "/" "\\/") "/g") cloud-install-bash-include-sh-file)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/accumulo/" (clojure.string/replace (get install-locs-map :accumulo) "/" "\\/") "/g") cloud-install-bash-include-sh-file)
-    (shell-out "sed" "-i" ".bak" (str "s/\\/path\\/to\\/zookeeper/" (clojure.string/replace (get install-locs-map :zookeeper) "/" "\\/") "/g") cloud-install-bash-include-sh-file)
+    (replace-text-in-file zookeeper-server-sh-file {"/path/to/zookeeper" (get install-locs-map :zookeeper)})
+    (replace-text-in-file  zookeeper-init-sh-file {"/path/to/zookeeper" (get install-locs-map :zookeeper)})
+    (replace-text-in-file start-hadoop-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
+    (replace-text-in-file stop-hadoop-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
+    (replace-text-in-file cloud-install-bash-include-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
+    (replace-text-in-file cloud-install-bash-include-sh-file {"/path/to/accumulo" (get install-locs-map :accumulo) "/path/to/zookeeper" (get install-locs-map :zookeeper)})
     (spit chmod-script (str "#!/bin/sh\n\nfor file in " install-directory "/*.sh; do chmod +x $file; done"))
     (run-command-with-no-args  (str "chmod +x " chmod-script))
     (run-command-with-no-args  (str "sh " chmod-script))
@@ -98,8 +105,7 @@
         cloud-install-bash-include-sh-file (str install-directory "/cloud-install-bash-include.sh")
         chmod-script (str install-directory "/chmod-script.sh")
         initialize-script-path (str install-directory "/" "initialize-accumulo.sh")]
-        (shell-out "sed" "-i" ".bak" (str "s/instance_name/" accumulo-instance-name "/g")  initialize-script-path)
-        (shell-out "sed" "-i" ".bak" (str "s/root_password/" accumulo-root-password "/g")  initialize-script-path)
+        (replace-text-in-file initialize-script-path {"/instance_name" accumulo-instance-name "root_password" accumulo-root-password})
         (prn "Starting Hadoop cluster, Initializing Accumulo cluster and then Stopping Hadoop cluster!")
         (run-command-with-no-args  (str "chmod +x " initialize-script-path))
         (shell-err "sh" initialize-script-path)
@@ -130,9 +136,13 @@
     (let [selected-directory (if (seq args) (first args) (select-directory))
           install-directory (str selected-directory "/" cloud-install-install-directory)
           selected-directory-file (File. selected-directory)
-          accumulo-instance-name (if (= 3 (count (seq args) )) (nth args 1) "accumulo")
-          accumulo-root-password (if (= 3 (count (seq args) )) (nth args 2) "secret")
+          accumulo-instance-name (if (= 3 (count (seq args))) (nth args 1) "accumulo")
+          accumulo-root-password (if (= 3 (count (seq args))) (nth args 2) "secret")
           install-locs-map {:zookeeper (str install-directory "/" zookeeper-version) :accumulo (str install-directory "/" accumulo-version) :hadoop (str install-directory "/" hadoop-version)}]
+      (if (empty? (System/getenv "JAVA_HOME"))
+        (do (prn "JAVA_HOME environment variable not set")
+            (System/exit 1)))
+      (prn (str "Cloud will be installed in: " install-directory (newline) (newline)))
       (run-command-with-no-args  (str "mkdir -p " install-directory))
       (install-hadoop install-directory install-locs-map)
       (install-zookeeper install-directory install-locs-map)
@@ -143,4 +153,6 @@
       (prn "Completed Successfully!")
       (prn (str "And we're done.  You should add the following to your
       bashrc in order to be able to run some of the executables like accumulo:" (newline) (newline)
-      "source " (str install-directory "/cloud-install-bash-include.sh")))))))
+      "source " (str install-directory "/cloud-install-bash-include.sh")))
+      (prn (str (newline) (newline) "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start"))
+      ))))
