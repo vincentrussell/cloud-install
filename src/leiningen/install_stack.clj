@@ -105,7 +105,7 @@
         cloud-install-bash-include-sh-file (str install-directory "/cloud-install-bash-include.sh")
         chmod-script (str install-directory "/chmod-script.sh")
         initialize-script-path (str install-directory "/" "initialize-accumulo.sh")]
-        (replace-text-in-file initialize-script-path {"/instance_name" accumulo-instance-name "root_password" accumulo-root-password})
+        (replace-text-in-file initialize-script-path {"instance_name" accumulo-instance-name "root_password" accumulo-root-password})
         (prn "Starting Hadoop cluster, Initializing Accumulo cluster and then Stopping Hadoop cluster!")
         (run-command-with-no-args  (str "chmod +x " initialize-script-path))
         (shell-err "sh" initialize-script-path)
