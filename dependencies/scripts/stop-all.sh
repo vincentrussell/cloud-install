@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 bin=`dirname "${BASH_SOURCE-$0}"`
 bin=`cd "$bin"; pwd`
@@ -17,5 +17,3 @@ $bin/stop-hadoop.sh
 #stop zookeeper
 
 $bin/stop-zookeeper.sh
-
-

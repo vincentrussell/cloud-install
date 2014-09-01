@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 export ZOOKEEPER_HOME=/path/to/zookeeper
 export ZOOKEEPER_CONF=$ZOOKEEPER_HOME/conf
