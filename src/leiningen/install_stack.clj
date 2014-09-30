@@ -11,6 +11,8 @@
 (def zookeeper-dist-location (str "dependencies/" zookeeper-version ".tar.gz"))
 (def accumulo-version "accumulo-1.5.1")
 (def accumulo-dist-location (str "dependencies/" accumulo-version ".tar.gz"))
+(def storm-version "apache-storm-0.9.1-incubating")
+(def storm-dist-location (str "dependencies/" storm-version ".tar.gz"))
 
 (defn replace-text-in-file
   [file-path regex-replacement-map]
