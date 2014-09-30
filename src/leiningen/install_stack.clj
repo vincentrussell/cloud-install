@@ -47,6 +47,16 @@
     (prn "Done Formatting name node!")
     (shell-out "rm" destination-full-path)))
 
+(defn install-storm
+  [install-directory install-locs-map]
+  (let [source-dest storm-dist-location
+        destination-file-name (last (clojure.string/split source-dest #"/"))
+        destination-full-path (str install-directory "/" destination-file-name)]
+    (copy-file source-dest destination-full-path)
+    (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
+    (prn "Initializing Storm!")
+    (shell-out "rm" destination-full-path)))
+
 (defn install-zookeeper
   [install-directory install-locs-map]
   (let [source-dest zookeeper-dist-location
@@ -146,6 +156,7 @@
             (System/exit 1)))
       (prn (str "Cloud will be installed in: " install-directory (newline) (newline)))
       (run-command-with-no-args  (str "mkdir -p " install-directory))
+      (install-storm install-directory install-locs-map)
       (install-hadoop install-directory install-locs-map)
       (install-zookeeper install-directory install-locs-map)
       (install-accumulo install-directory install-locs-map)
