@@ -127,8 +127,9 @@
   [project args]
   (let [hadoop-dep-file (File. hadoop-dist-location)
         accumulo-dep-file (File. accumulo-dist-location)
-        zookeeper-dep-file (File. zookeeper-dist-location)]
-    (if (or (not (.exists hadoop-dep-file)) (not (.exists accumulo-dep-file)) (not (.exists zookeeper-dep-file)))
+        zookeeper-dep-file (File. zookeeper-dist-location)
+        storm-dep-file (File. storm-dist-location)]
+    (if (or (not (.exists hadoop-dep-file)) (not (.exists accumulo-dep-file)) (not (.exists zookeeper-dep-file)) (not (.exists storm-dep-file)))
         (deps/download-dependencies project args))
     (prn "Download complete!")))
 
@@ -146,7 +147,7 @@
      "THIS MAY TAKE A WHILE TO DOWNLOAD THEM!"))
     (check-dependencies project args)
     (let [selected-directory (if (seq args) (first args) (select-directory))
-          install-directory (str selected-directory "/" cloud-install-install-directory)
+          install-directory (str selected-directory (if (.endsWith selected-directory "/") "" "/") cloud-install-install-directory)
           selected-directory-file (File. selected-directory)
           accumulo-instance-name (if (= 3 (count (seq args))) (nth args 1) "accumulo")
           accumulo-root-password (if (= 3 (count (seq args))) (nth args 2) "secret")
