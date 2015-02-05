@@ -5,8 +5,4 @@ bin=`cd "$bin"; pwd`
 
 source $bin/cloud-install-bash-include.sh
 
-$HADOOP_HOME/sbin/stop-dfs.sh
-
-sleep 10
-
-$HADOOP_HOME/bin-mapreduce1/stop-mapred.sh
+$HADOOP_PREFIX/bin/stop-all.sh
