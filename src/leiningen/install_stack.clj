@@ -5,7 +5,7 @@
            [java.io File]))
 
 (def cloud-install-install-directory "cloud-install")
-(def hadoop-version "hadoop-2.0.0-cdh4.6.0")
+(def hadoop-version "hadoop-1.2.1")
 (def hadoop-dist-location (str "dependencies/" hadoop-version ".tar.gz"))
 (def zookeeper-version "zookeeper-3.4.5-cdh4.6.0")
 (def zookeeper-dist-location (str "dependencies/" zookeeper-version ".tar.gz"))
@@ -27,23 +27,46 @@
   (let [source-dest hadoop-dist-location
         destination-file-name (last (clojure.string/split source-dest #"/"))
         destination-full-path (str install-directory "/" destination-file-name)
-        core-site-full-path (str install-directory "/" hadoop-version "/etc/hadoop/core-site.xml")
-        hdfs-site-full-path (str install-directory "/" hadoop-version "/etc/hadoop/hdfs-site.xml")
-        hadoop-config-full-path (str install-directory "/" hadoop-version "/libexec/hadoop-config.sh")
-        httpfs-config-full-path (str install-directory "/" hadoop-version "/libexec/httpfs-config.sh")
-        slaves-full-path (str install-directory "/" hadoop-version "/etc/hadoop/slaves")
-        hadoop-mapred-config-full-path (str install-directory "/" hadoop-version "/bin-mapreduce1/hadoop-config.sh")
-        hadoop-mapred-webapps-dir (str install-directory "/" hadoop-version "/share/hadoop/mapreduce1/webapps")]
+        core-site-full-path (str install-directory "/" hadoop-version "/conf/core-site.xml")
+        hdfs-site-full-path (str install-directory "/" hadoop-version "/conf/hdfs-site.xml")
+        mapred-site-full-path (str install-directory "/" hadoop-version "/conf/mapred-site.xml")
+        hadoop-config-full-path (str install-directory "/" hadoop-version "/bin/hadoop-config.sh")
+        slaves-full-path (str install-directory "/" hadoop-version "/conf/slaves")]
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
-    (run-command-with-no-args (str "cp -R " hadoop-mapred-webapps-dir " " install-directory "/" hadoop-version))
-    (flat-copy (File. (str install-directory "/" hadoop-version "/etc/hadoop-mapreduce1-pseudo" )) (File. (str install-directory "/" hadoop-version "/etc/hadoop" )))
-    (spit hdfs-site-full-path  (.replaceAll (slurp hdfs-site-full-path) "<!-- Enable Hue Plugins -->[\\S\\s]*</configuration>"  "</configuration>"))
-    (replace-text-in-file hdfs-site-full-path {"/var/lib/hadoop-0.20" (str "file://" install-directory "/" hadoop-version)})
-    (replace-text-in-file core-site-full-path {"/var/lib/hadoop-0.20" (str install-directory "/" hadoop-version)})
+    (spit core-site-full-path
+          "<?xml version=\"1.0\"?>
+          <?xml-stylesheet type=\"text/xsl\" href=\"configuration.xsl\"?>
+          
+          <configuration>
+               <property>
+                   <name>fs.default.name</name>
+                   <value>hdfs://localhost:9000</value>
+               </property>
+          </configuration>")
+    (spit hdfs-site-full-path
+          "<?xml version=\"1.0\"?>
+          <?xml-stylesheet type=\"text/xsl\" href=\"configuration.xsl\"?>
+          
+          <configuration>
+              <property>
+                  <name>dfs.replication</name>
+                  <value>1</value>
+              </property>
+          </configuration>")
+    (spit mapred-site-full-path
+          "<?xml version=\"1.0\"?>
+          <?xml-stylesheet type=\"text/xsl\" href=\"configuration.xsl\"?>
+          
+          <configuration>
+              <property>
+                  <name>mapred.job.tracker</name>
+                  <value>localhost:9001</value>
+              </property>
+          </configuration>")
     (spit slaves-full-path "localhost\n")
     (prn "Formatting name node!")
-    (shell-out (str install-directory "/" hadoop-version "/bin/hdfs") "namenode" "-format" "-force" )
+    (shell-out (str install-directory "/" hadoop-version "/bin/hadoop") "namenode" "-format" "-force" )
     (prn "Done Formatting name node!")
     (shell-out "rm" destination-full-path)))
 
@@ -80,7 +103,7 @@
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
     (flat-copy (File. (str install-directory "/" accumulo-version "/conf/examples/1GB/standalone" )) (File. (str install-directory "/" accumulo-version "/conf" )))
-    (spit accumulo-site-xml-file  (.replaceAll (slurp accumulo-site-xml-file) "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"  "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/lib/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/hdfs/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/mapreduce/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/yarn/.*.jar,"))
+    (spit accumulo-site-xml-file  (.replaceAll (slurp accumulo-site-xml-file) "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"  "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"))
     (replace-text-in-file accumulo-env-full-path {"/path/to/zookeeper" (get install-locs-map :zookeeper) "/path/to/hadoop" (get install-locs-map :hadoop)})
     (shell-out "rm" destination-full-path)))
 
