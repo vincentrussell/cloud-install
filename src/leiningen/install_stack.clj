@@ -110,6 +110,7 @@
         data-node-dir (str install-directory "/" deps/hadoop-version "/cache/hadoop/dfs/data")
         name-node-dir (str install-directory "/" deps/hadoop-version "/cache/hadoop/dfs/name")
         ]
+    (prn "Installing Hadoop!")
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
     (.mkdirs (File. data-node-dir))
@@ -131,7 +132,7 @@
         destination-full-path (str install-directory "/" destination-file-name)]
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
-    (prn "Initializing Storm!")
+    (prn "Installing Storm!")
     (shell-out "rm" destination-full-path)))
 
 (defn install-zookeeper
@@ -143,7 +144,7 @@
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
     (spit zoo-cfg-full-path (str "tickTime=2000\ninitLimit=10\nsyncLimit=5\ndataDir=" (str install-directory "/" deps/zookeeper-version "/dataDir") "\nclientPort=2181\n"))
-    (prn "Initializing Zookeeper!")
+    (prn "Installing Zookeeper!")
     (run-command-with-no-args (str install-directory "/" deps/zookeeper-version "/bin/zkServer-initialize.sh"))
     (shell-out "rm" destination-full-path)))
 
@@ -154,12 +155,40 @@
         destination-full-path (str install-directory "/" destination-file-name)
         accumulo-site-xml-file (str install-directory "/" deps/accumulo-version "/conf/accumulo-site.xml")
         accumulo-env-full-path (str install-directory "/" deps/accumulo-version "/conf/accumulo-env.sh")]
+    (prn "Installing Accumulo!")
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
     (flat-copy (File. (str install-directory "/" deps/accumulo-version "/conf/examples/1GB/standalone" )) (File. (str install-directory "/" deps/accumulo-version "/conf" )))
     (spit accumulo-site-xml-file  (.replaceAll (slurp accumulo-site-xml-file) "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"  "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/lib/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/hdfs/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/mapreduce/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/yarn/.*.jar,"))
     (replace-text-in-file accumulo-env-full-path {"/path/to/zookeeper" (get install-locs-map :zookeeper) "/path/to/hadoop" (get install-locs-map :hadoop)})
     (shell-out "rm" destination-full-path)))
+
+
+(defn install-spark
+  [install-directory install-locs-map]
+  (let [source-dest deps/spark-dist-location
+        destination-file-name (last (clojure.string/split source-dest #"/"))
+        destination-full-path (str install-directory "/" destination-file-name)
+        core-site-full-path (str install-directory "/" deps/spark-version "/etc/hadoop/core-site.xml")
+        hdfs-site-full-path (str install-directory "/" deps/spark-version "/etc/hadoop/hdfs-site.xml")
+        yarn-site-full-path (str install-directory "/" deps/spark-version "/etc/hadoop/yarn-site.xml")
+        slaves-full-path (str install-directory "/" deps/spark-version "/conf/slaves")
+        data-node-dir (str install-directory "/" deps/spark-version "/cache/hadoop/dfs/data")
+        name-node-dir (str install-directory "/" deps/spark-version "/cache/hadoop/dfs/name")
+        ]
+    (prn "Installing Spark!")
+    (copy-file source-dest destination-full-path)
+    (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
+    ;(flat-copy (File. (str install-directory "/" deps/ "/etc/hadoop" )) (File. (str install-directory "/" deps/ "/etc/hadoop" )))
+    ;(spit hdfs-site-full-path (hdfs-site-config data-node-dir name-node-dir))
+    ;(spit core-site-full-path (hdfs-core-config))
+    ;(spit yarn-site-full-path (hadoop-yarn-config))
+    (spit slaves-full-path "localhost\n")
+    ;(prn "Formatting name node!")
+    ;(shell-out (str install-directory "/" deps/ "/bin/hdfs") "namenode" "-format" "-force" )
+    ;(prn "Done Formatting name node!")
+    (shell-out "rm" destination-full-path)
+    ))
 
 
 (defn install-scripts
@@ -176,6 +205,7 @@
     (replace-text-in-file start-hadoop-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
     (replace-text-in-file stop-hadoop-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
     (replace-text-in-file cloud-install-bash-include-sh-file {"/path/to/hadoop" (get install-locs-map :hadoop)})
+    (replace-text-in-file cloud-install-bash-include-sh-file {"/path/to/spark" (get install-locs-map :spark)})
     (replace-text-in-file cloud-install-bash-include-sh-file {"/path/to/accumulo" (get install-locs-map :accumulo) "/path/to/zookeeper" (get install-locs-map :zookeeper)})
     (spit chmod-script (str "#!/bin/sh\n\nfor file in " install-directory "/*.sh; do chmod +x $file; done"))
     (run-command-with-no-args  (str "chmod +x " chmod-script))
@@ -234,6 +264,7 @@
       (install-hadoop install-directory install-locs-map)
       (install-zookeeper install-directory install-locs-map)
       (install-accumulo install-directory install-locs-map)
+      (install-spark install-directory install-locs-map)
       (install-scripts install-directory install-locs-map)
       (prn "Configuring accumulo!")
       (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)

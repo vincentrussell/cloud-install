@@ -5,6 +5,10 @@ bin=`cd "$bin"; pwd`
 
 source $bin/cloud-install-bash-include.sh
 
+#stop spark
+
+$bin/stop-spark.sh
+
 #stop accumulo
 
 $bin/stop-accumulo.sh

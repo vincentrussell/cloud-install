@@ -18,3 +18,7 @@ $bin/start-hadoop.sh
 #start accumulo
 
 $bin/start-accumulo.sh
+
+#start spark
+
+$bin/start-spark.sh
