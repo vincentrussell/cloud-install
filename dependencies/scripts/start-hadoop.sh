@@ -6,8 +6,14 @@ bin=`cd "$bin"; pwd`
 source $bin/cloud-install-bash-include.sh
 
 
-$HADOOP_HOME/sbin/start-dfs.sh
 
-sleep 10
+# Start the namenode daemon
+$HADOOP_PREFIX/sbin/hadoop-daemon.sh start namenode
+# Start the datanode daemon
+$HADOOP_PREFIX/sbin/hadoop-daemon.sh start datanode
 
-$HADOOP_HOME/bin-mapreduce1/start-mapred.sh
+## Start YARN daemons
+# Start the resourcemanager daemon
+$HADOOP_PREFIX/sbin/yarn-daemon.sh start resourcemanager
+# Start the nodemanager daemon
+$HADOOP_PREFIX/sbin/yarn-daemon.sh start nodemanager

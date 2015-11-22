@@ -1,18 +1,8 @@
 (ns leiningen.install-stack
   (:use [leiningen.stack-core])
-  (:require [leiningen.download-dependencies :as deps])
-  (:import [javax.swing JFileChooser JOptionPane]
-           [java.io File]))
-
-(def cloud-install-install-directory "cloud-install")
-(def hadoop-version "hadoop-2.0.0-cdh4.6.0")
-(def hadoop-dist-location (str "dependencies/" hadoop-version ".tar.gz"))
-(def zookeeper-version "zookeeper-3.4.5-cdh4.6.0")
-(def zookeeper-dist-location (str "dependencies/" zookeeper-version ".tar.gz"))
-(def accumulo-version "accumulo-1.5.1")
-(def accumulo-dist-location (str "dependencies/" accumulo-version ".tar.gz"))
-(def storm-version "apache-storm-0.9.1-incubating")
-(def storm-dist-location (str "dependencies/" storm-version ".tar.gz"))
+  (:require [leiningen.download-dependencies :as deps]
+            [clojure.data.xml :as xml])
+  (:import [java.io File]))
 
 (defn replace-text-in-file
   [file-path regex-replacement-map]
@@ -22,34 +12,121 @@
       (spit file-path new-text))))
 
 
+(defn hdfs-site-config
+  [data-node-dir name-node-dir]
+  (xml/emit-str
+    (xml/element :configuration {}
+                 (xml/element :property {}
+                              (xml/element :name {} "dfs.datanode.data.dir" )
+                              (xml/element :value {} (str "file://" data-node-dir))
+                              (xml/element :description {} "Comma separated list of paths on the local filesystem of a DataNode where it should store its blocks." ))
+                 (xml/element :property {}
+                              (xml/element :name {} "dfs.namenode.name.dir" )
+                              (xml/element :value {} (str "file://" name-node-dir))
+                              (xml/element :description {} "Path on the local filesystem where the NameNode stores the namespace and transaction logs persistently." ))
+                 )))
+
+(defn hdfs-core-config []
+  (xml/emit-str
+    (xml/element :configuration {}
+                 (xml/element :property {}
+                              (xml/element :name {} "fs.defaultFS" )
+                              (xml/element :value {} "hdfs://localhost/")
+                              (xml/element :description {} "NameNode URI" ))
+                 )))
+
+
+(defn hadoop-yarn-config []
+  (xml/emit-str
+    (xml/element :configuration {}
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.scheduler.minimum-allocation-mb" )
+                              (xml/element :value {} "128"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.scheduler.maximum-allocation-mb" )
+                              (xml/element :value {} "1048"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.scheduler.minimum-allocation-vcores" )
+                              (xml/element :value {} "1"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.scheduler.maximum-allocation-vcores" )
+                              (xml/element :value {} "2"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.scheduler.maximum-allocation-vcores" )
+                              (xml/element :value {} "1096"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.nodemanager.resource.cpu-vcores" )
+                              (xml/element :value {} "1"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.nodemanager.aux-services" )
+                              (xml/element :value {} "mapreduce_shuffle"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.resourcemanager.hostname" )
+                              (xml/element :value {} "localhost"))
+                 )))
+
+(defn hadoop-mapred-config []
+  (xml/emit-str
+    (xml/element :configuration {}
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.app.mapreduce.am.resource.mb" )
+                              (xml/element :value {} "1024"))
+                 (xml/element :property {}
+                              (xml/element :name {} "yarn.app.mapreduce.am.command-opts" )
+                              (xml/element :value {} "-Xmx768m"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.framework.name" )
+                              (xml/element :value {} "yarn"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.map.cpu.vcores" )
+                              (xml/element :value {} "1"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.reduce.cpu.vcores" )
+                              (xml/element :value {} "1"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.map.memory.mb" )
+                              (xml/element :value {} "1024"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.map.java.opts" )
+                              (xml/element :value {} "-Xmx768m"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.reduce.memory.mb" )
+                              (xml/element :value {} "1024"))
+                 (xml/element :property {}
+                              (xml/element :name {} "mapreduce.reduce.java.opts" )
+                              (xml/element :value {} "-Xmx768m"))
+                 )))
+
+
 (defn install-hadoop
   [install-directory install-locs-map]
-  (let [source-dest hadoop-dist-location
+  (let [source-dest deps/hadoop-dist-location
         destination-file-name (last (clojure.string/split source-dest #"/"))
         destination-full-path (str install-directory "/" destination-file-name)
-        core-site-full-path (str install-directory "/" hadoop-version "/etc/hadoop/core-site.xml")
-        hdfs-site-full-path (str install-directory "/" hadoop-version "/etc/hadoop/hdfs-site.xml")
-        hadoop-config-full-path (str install-directory "/" hadoop-version "/libexec/hadoop-config.sh")
-        httpfs-config-full-path (str install-directory "/" hadoop-version "/libexec/httpfs-config.sh")
-        slaves-full-path (str install-directory "/" hadoop-version "/etc/hadoop/slaves")
-        hadoop-mapred-config-full-path (str install-directory "/" hadoop-version "/bin-mapreduce1/hadoop-config.sh")
-        hadoop-mapred-webapps-dir (str install-directory "/" hadoop-version "/share/hadoop/mapreduce1/webapps")]
+        core-site-full-path (str install-directory "/" deps/hadoop-version "/etc/hadoop/core-site.xml")
+        hdfs-site-full-path (str install-directory "/" deps/hadoop-version "/etc/hadoop/hdfs-site.xml")
+        yarn-site-full-path (str install-directory "/" deps/hadoop-version "/etc/hadoop/yarn-site.xml")
+        slaves-full-path (str install-directory "/" deps/hadoop-version "/etc/hadoop/slaves")
+        data-node-dir (str install-directory "/" deps/hadoop-version "/cache/hadoop/dfs/data")
+        name-node-dir (str install-directory "/" deps/hadoop-version "/cache/hadoop/dfs/name")
+        ]
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
-    (run-command-with-no-args (str "cp -R " hadoop-mapred-webapps-dir " " install-directory "/" hadoop-version))
-    (flat-copy (File. (str install-directory "/" hadoop-version "/etc/hadoop-mapreduce1-pseudo" )) (File. (str install-directory "/" hadoop-version "/etc/hadoop" )))
-    (spit hdfs-site-full-path  (.replaceAll (slurp hdfs-site-full-path) "<!-- Enable Hue Plugins -->[\\S\\s]*</configuration>"  "</configuration>"))
-    (replace-text-in-file hdfs-site-full-path {"/var/lib/hadoop-0.20" (str "file://" install-directory "/" hadoop-version)})
-    (replace-text-in-file core-site-full-path {"/var/lib/hadoop-0.20" (str install-directory "/" hadoop-version)})
+    (.mkdirs (File. data-node-dir))
+    (.mkdirs (File. name-node-dir))
+    (flat-copy (File. (str install-directory "/" deps/hadoop-version "/etc/hadoop" )) (File. (str install-directory "/" deps/hadoop-version "/etc/hadoop" )))
+    (spit hdfs-site-full-path (hdfs-site-config data-node-dir name-node-dir))
+    (spit core-site-full-path (hdfs-core-config))
+    (spit yarn-site-full-path (hadoop-yarn-config))
     (spit slaves-full-path "localhost\n")
     (prn "Formatting name node!")
-    (shell-out (str install-directory "/" hadoop-version "/bin/hdfs") "namenode" "-format" "-force" )
+    (shell-out (str install-directory "/" deps/hadoop-version "/bin/hdfs") "namenode" "-format" "-force" )
     (prn "Done Formatting name node!")
     (shell-out "rm" destination-full-path)))
 
 (defn install-storm
   [install-directory install-locs-map]
-  (let [source-dest storm-dist-location
+  (let [source-dest deps/storm-dist-location
         destination-file-name (last (clojure.string/split source-dest #"/"))
         destination-full-path (str install-directory "/" destination-file-name)]
     (copy-file source-dest destination-full-path)
@@ -59,27 +136,27 @@
 
 (defn install-zookeeper
   [install-directory install-locs-map]
-  (let [source-dest zookeeper-dist-location
+  (let [source-dest deps/zookeeper-dist-location
         destination-file-name (last (clojure.string/split source-dest #"/"))
         destination-full-path (str install-directory "/" destination-file-name)
-        zoo-cfg-full-path (str install-directory "/" zookeeper-version "/conf/zoo.cfg")]
+        zoo-cfg-full-path (str install-directory "/" deps/zookeeper-version "/conf/zoo.cfg")]
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
-    (spit zoo-cfg-full-path (str "tickTime=2000\ninitLimit=10\nsyncLimit=5\ndataDir=" (str install-directory "/" zookeeper-version "/dataDir") "\nclientPort=2181\n"))
+    (spit zoo-cfg-full-path (str "tickTime=2000\ninitLimit=10\nsyncLimit=5\ndataDir=" (str install-directory "/" deps/zookeeper-version "/dataDir") "\nclientPort=2181\n"))
     (prn "Initializing Zookeeper!")
-    (run-command-with-no-args (str install-directory "/" zookeeper-version "/bin/zkServer-initialize.sh"))
+    (run-command-with-no-args (str install-directory "/" deps/zookeeper-version "/bin/zkServer-initialize.sh"))
     (shell-out "rm" destination-full-path)))
 
 (defn install-accumulo
   [install-directory install-locs-map]
-  (let [source-dest accumulo-dist-location
+  (let [source-dest deps/accumulo-dist-location
         destination-file-name (last (clojure.string/split source-dest #"/"))
         destination-full-path (str install-directory "/" destination-file-name)
-        accumulo-site-xml-file (str install-directory "/" accumulo-version "/conf/accumulo-site.xml")
-        accumulo-env-full-path (str install-directory "/" accumulo-version "/conf/accumulo-env.sh")]
+        accumulo-site-xml-file (str install-directory "/" deps/accumulo-version "/conf/accumulo-site.xml")
+        accumulo-env-full-path (str install-directory "/" deps/accumulo-version "/conf/accumulo-env.sh")]
     (copy-file source-dest destination-full-path)
     (shell-out "tar" "xfz" destination-full-path "-C" install-directory)
-    (flat-copy (File. (str install-directory "/" accumulo-version "/conf/examples/1GB/standalone" )) (File. (str install-directory "/" accumulo-version "/conf" )))
+    (flat-copy (File. (str install-directory "/" deps/accumulo-version "/conf/examples/1GB/standalone" )) (File. (str install-directory "/" deps/accumulo-version "/conf" )))
     (spit accumulo-site-xml-file  (.replaceAll (slurp accumulo-site-xml-file) "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,"  "\\$HADOOP_PREFIX\\/lib\\/\\[\\^\\.\\]\\.\\*\\.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/common/lib/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/hdfs/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/mapreduce/.*.jar,\n\\$HADOOP_PREFIX/share/hadoop/yarn/.*.jar,"))
     (replace-text-in-file accumulo-env-full-path {"/path/to/zookeeper" (get install-locs-map :zookeeper) "/path/to/hadoop" (get install-locs-map :hadoop)})
     (shell-out "rm" destination-full-path)))
@@ -91,8 +168,6 @@
         zookeeper-init-sh-file (str install-directory "/zookeeper-init.sh")
         start-hadoop-sh-file (str install-directory "/start-hadoop.sh")
         stop-hadoop-sh-file (str install-directory "/stop-hadoop.sh")
-        stop-zookeeper-sh-file (str install-directory "/stop-zookeper.sh")
-        start-zookeeper-sh-file (str install-directory "/start-zookeeper.sh")
         cloud-install-bash-include-sh-file (str install-directory "/cloud-install-bash-include.sh")
         chmod-script (str install-directory "/chmod-script.sh")]
     (flat-copy (File. "dependencies/scripts") (File. install-directory))
@@ -109,14 +184,7 @@
 
 (defn configure-accumulo
   [install-directory install-locs-map accumulo-instance-name accumulo-root-password]
-  (let [zookeeper-server-sh-file (str install-directory "/zookeeper-server.sh")
-        start-hadoop-sh-file (str install-directory "/start-hadoop.sh")
-        stop-hadoop-sh-file (str install-directory "/stop-hadoop.sh")
-        stop-zookeeper-sh-file (str install-directory "/stop-zookeper.sh")
-        start-zookeeper-sh-file (str install-directory "/start-zookeeper.sh")
-        cloud-install-bash-include-sh-file (str install-directory "/cloud-install-bash-include.sh")
-        chmod-script (str install-directory "/chmod-script.sh")
-        initialize-script-path (str install-directory "/" "initialize-accumulo.sh")]
+  (let [initialize-script-path (str install-directory "/" "initialize-accumulo.sh")]
         (replace-text-in-file initialize-script-path {"instance_name" accumulo-instance-name "root_password" accumulo-root-password})
         (prn "Starting Hadoop cluster, Initializing Accumulo cluster and then Stopping Hadoop cluster!")
         (run-command-with-no-args  (str "chmod +x " initialize-script-path))
@@ -125,11 +193,13 @@
 
 (defn check-dependencies
   [project args]
-  (let [hadoop-dep-file (File. hadoop-dist-location)
-        accumulo-dep-file (File. accumulo-dist-location)
-        zookeeper-dep-file (File. zookeeper-dist-location)
-        storm-dep-file (File. storm-dist-location)]
-    (if (or (not (.exists hadoop-dep-file)) (not (.exists accumulo-dep-file)) (not (.exists zookeeper-dep-file)) (not (.exists storm-dep-file)))
+  (let [hadoop-dep-file (File. deps/hadoop-dist-location)
+        accumulo-dep-file (File. deps/accumulo-dist-location)
+        zookeeper-dep-file (File. deps/zookeeper-dist-location)
+        storm-dep-file (File. deps/storm-dist-location)
+        spark-dep-file (File. deps/spark-dist-location)]
+    (if (or (not (.exists hadoop-dep-file)) (not (.exists accumulo-dep-file)) (not (.exists zookeeper-dep-file))
+            (not (.exists storm-dep-file)) (not (.exists spark-dep-file)) )
         (deps/download-dependencies project args))
     (prn "Download complete!")))
 
@@ -138,7 +208,7 @@
   "install the cloud stack"
   ([project]
     (do
-      (prn (str "Please run the script like this" (newline)
+      (prn (str "Please run the script like this " (newline)
     "lein install-stack <<install_dir>> <<accumulo_instance_name>> <<accumulo_root_password>>"))
       (System/exit 1)))
   ([project & args]
@@ -147,11 +217,14 @@
      "THIS MAY TAKE A WHILE TO DOWNLOAD THEM!"))
     (check-dependencies project args)
     (let [selected-directory (if (seq args) (first args) (select-directory))
-          install-directory (str selected-directory (if (.endsWith selected-directory "/") "" "/") cloud-install-install-directory)
-          selected-directory-file (File. selected-directory)
+          install-dir (.getAbsolutePath (File. selected-directory))
+          install-directory (str install-dir (if (.endsWith install-dir "/") "" "/"))
           accumulo-instance-name (if (= 3 (count (seq args))) (nth args 1) "accumulo")
           accumulo-root-password (if (= 3 (count (seq args))) (nth args 2) "secret")
-          install-locs-map {:zookeeper (str install-directory "/" zookeeper-version) :accumulo (str install-directory "/" accumulo-version) :hadoop (str install-directory "/" hadoop-version)}]
+          install-locs-map {:zookeeper (str install-directory deps/zookeeper-version)
+                            :accumulo (str install-directory deps/accumulo-version)
+                            :hadoop (str install-directory deps/hadoop-version)
+                            :spark (str install-directory deps/spark-version)}]
       (if (empty? (System/getenv "JAVA_HOME"))
         (do (prn "JAVA_HOME environment variable not set")
             (System/exit 1)))
@@ -164,9 +237,8 @@
       (install-scripts install-directory install-locs-map)
       (prn "Configuring accumulo!")
       (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)
-      (prn "Completed Successfully!")
-      (prn (str "And we're done.  You should add the following to your
-      bashrc in order to be able to run some of the executables like accumulo:" (newline) (newline)
-      "source " (str install-directory "/cloud-install-bash-include.sh")))
+      (prn "And we're done!") (newline)
+      (prn "You should add the following to your .bashrc in order to be able to run some of the executables like \"accumulo\" from any directory")
+      (prn (str "source " (str install-directory "cloud-install-bash-include.sh")))
       (prn (str (newline) (newline) "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start"))
       ))))
