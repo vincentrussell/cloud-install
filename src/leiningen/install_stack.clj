@@ -2,7 +2,8 @@
   (:use [leiningen.stack-core])
   (:require [leiningen.download-dependencies :as deps]
             [clojure.data.xml :as xml])
-  (:import [java.io File]))
+  (:import [java.io File]
+           [java.lang IllegalStateException]))
 
 (defn replace-text-in-file
   [file-path regex-replacement-map]
@@ -249,6 +250,7 @@
     (let [selected-directory (if (seq args) (first args) (select-directory))
           install-dir (.getAbsolutePath (File. selected-directory))
           install-directory (str install-dir (if (.endsWith install-dir "/") "" "/"))
+          install-directory-file (File. install-directory)
           accumulo-instance-name (if (= 3 (count (seq args))) (nth args 1) "accumulo")
           accumulo-root-password (if (= 3 (count (seq args))) (nth args 2) "secret")
           install-locs-map {:zookeeper (str install-directory deps/zookeeper-version)
@@ -256,8 +258,13 @@
                             :hadoop (str install-directory deps/hadoop-version)
                             :spark (str install-directory deps/spark-version)}]
       (if (empty? (System/getenv "JAVA_HOME"))
-        (do (prn "JAVA_HOME environment variable not set")
-            (System/exit 1)))
+        (throw (IllegalStateException. "JAVA_HOME environment variable not set")))
+      (if  (or
+             (and
+                 (.exists install-directory-file)
+                 (not (-> install-directory-file .list empty?)))
+             (not (.exists install-directory-file)))
+        (throw (IllegalStateException. (str install-directory " already exists and is not empty"))))
       (prn (str "Cloud will be installed in: " install-directory (newline) (newline)))
       (run-command-with-no-args  (str "mkdir -p " install-directory))
       (install-storm install-directory install-locs-map)
@@ -269,7 +276,7 @@
       (prn "Configuring accumulo!")
       (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)
       (prn "And we're done!") (newline)
-      (prn "You should add the following to your .bashrc in order to be able to run some of the executables like \"accumulo\" from any directory")
+      (prn "You will also need to add the following to your .bashrc (or run it every time you want to start the cloud)")
       (prn (str "source " (str install-directory "cloud-install-bash-include.sh")))
-      (prn (str (newline) (newline) "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start"))
-      ))))
+      (prn (str (newline) (newline) "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start, ex:"))
+      (prn (str "127.0.0.1   localhost vrussell Vincents-MacBook-Pro.local Vincents-MacBook-Pro.home"))))))
