@@ -1,9 +1,13 @@
 (ns leiningen.install-stack
   (:use [leiningen.stack-core])
   (:require [leiningen.download-dependencies :as deps]
-            [clojure.data.xml :as xml])
+            [leiningen.core.main :as main]
+            [clojure.data.xml :as xml]
+            [clojure.tools.cli :refer [parse-opts]])
   (:import [java.io File]
-           [java.lang IllegalStateException]))
+           [java.lang IllegalStateException]
+           [org.apache.commons.io FileUtils])
+  (:gen-class))
 
 (defn replace-text-in-file
   [file-path regex-replacement-map]
@@ -217,13 +221,13 @@
   [install-directory install-locs-map accumulo-instance-name accumulo-root-password]
   (let [initialize-script-path (str install-directory "/" "initialize-accumulo.sh")]
         (replace-text-in-file initialize-script-path {"instance_name" accumulo-instance-name "root_password" accumulo-root-password})
-        (prn "Starting Hadoop cluster, Initializing Accumulo cluster and then Stopping Hadoop cluster!")
+        (main/info "Starting Hadoop cluster, Initializing Accumulo cluster and then Stopping Hadoop cluster!")
         (run-command-with-no-args  (str "chmod +x " initialize-script-path))
         (shell-err "sh" initialize-script-path)
         (shell-out "rm" initialize-script-path)))
 
 (defn check-dependencies
-  [project args]
+  []
   (let [hadoop-dep-file (File. deps/hadoop-dist-location)
         accumulo-dep-file (File. deps/accumulo-dist-location)
         zookeeper-dep-file (File. deps/zookeeper-dist-location)
@@ -231,52 +235,99 @@
         spark-dep-file (File. deps/spark-dist-location)]
     (if (or (not (.exists hadoop-dep-file)) (not (.exists accumulo-dep-file)) (not (.exists zookeeper-dep-file))
             (not (.exists storm-dep-file)) (not (.exists spark-dep-file)) )
-        (deps/download-dependencies project args))
-    (prn "Download complete!")))
+        (deps/download-dependencies))
+    (main/info "Download complete!")))
+
+
+(defn is-valid-directory
+  [directory]
+    (try
+      (let [directory-object (File. directory)]
+        (.isDirectory directory-object))
+      (catch Exception e false)))
+
+(defn is-not-blank
+  [string]
+  (not (clojure.string/blank? string)))
+
+(def cli-options
+  ;; An option with a required argument
+  [["-d" "--directory INSTALL_DIRECTORY"
+    :required "Directory where stack will be installed"
+    :validate [#(is-valid-directory %) "must be a valid directory"
+               #(is-not-blank %) "directory must not be blank"]]
+   ["-i" "--instance ACCUMULO_INSTANCE_NAME" "Accumulo Instance Name"
+    :default "accumulo"
+    :validate [#(is-not-blank %) "instance name must not be blank"]]
+   ["-p" "--password ACCUMULO_ROOT_PASSWORD" "Accumulo Root Password"
+    :default "secret"
+    :validate [#(is-not-blank %) "password must not be blank"]]
+   ;; A boolean option defaulting to nil
+   ["-f" "--force"]])
+
+
 
 (defn
   install-stack
-  "install the cloud stack"
+  "This will install a standalone hadoop/accumulo/spark cloud to a specified directory
+  -d: <directory>  The directory where to install the standalone cloud
+  -i: <instance> (defaults to accumulo) The accumulo instance name
+  -p: <password> (defaults to secret) The accumulo root password
+  -f: will delete the install directory first if it exists
+  -h: this help dialog
+  -?: this help dialog
+  "
   ([project]
-    (do
-      (prn (str "Please run the script like this " (newline)
-    "lein install-stack <<install_dir>> <<accumulo_instance_name>> <<accumulo_root_password>>"))
-      (System/exit 1)))
+   (main/abort "Required arguments missing:
+   run: \"lein install-stack -h\" for help"))
   ([project & args]
-  (do
-    (prn (str "We are going to download the big files in order to not have to check them into git." (newline) (newline)
-     "THIS MAY TAKE A WHILE TO DOWNLOAD THEM!"))
-    (check-dependencies project args)
-    (let [selected-directory (if (seq args) (first args) (select-directory))
-          install-dir (.getAbsolutePath (File. selected-directory))
-          install-directory (str install-dir (if (.endsWith install-dir "/") "" "/"))
-          install-directory-file (File. install-directory)
-          accumulo-instance-name (if (= 3 (count (seq args))) (nth args 1) "accumulo")
-          accumulo-root-password (if (= 3 (count (seq args))) (nth args 2) "secret")
-          install-locs-map {:zookeeper (str install-directory deps/zookeeper-version)
-                            :accumulo (str install-directory deps/accumulo-version)
-                            :hadoop (str install-directory deps/hadoop-version)
-                            :spark (str install-directory deps/spark-version)}]
-      (if (empty? (System/getenv "JAVA_HOME"))
-        (throw (IllegalStateException. "JAVA_HOME environment variable not set")))
-      (if  (or
-             (and
-                 (.exists install-directory-file)
-                 (not (-> install-directory-file .list empty?)))
-             (not (.exists install-directory-file)))
-        (throw (IllegalStateException. (str install-directory " already exists and is not empty"))))
-      (prn (str "Cloud will be installed in: " install-directory (newline) (newline)))
-      (run-command-with-no-args  (str "mkdir -p " install-directory))
-      (install-storm install-directory install-locs-map)
-      (install-hadoop install-directory install-locs-map)
-      (install-zookeeper install-directory install-locs-map)
-      (install-accumulo install-directory install-locs-map)
-      (install-spark install-directory install-locs-map)
-      (install-scripts install-directory install-locs-map)
-      (prn "Configuring accumulo!")
-      (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)
-      (prn "And we're done!") (newline)
-      (prn "You will also need to add the following to your .bashrc (or run it every time you want to start the cloud)")
-      (prn (str "source " (str install-directory "cloud-install-bash-include.sh")))
-      (prn (str (newline) (newline) "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start, ex:"))
-      (prn (str "127.0.0.1   localhost vrussell Vincents-MacBook-Pro.local Vincents-MacBook-Pro.home"))))))
+   (let [{:keys [options arguments errors summary]} (parse-opts args cli-options)]
+     (if (clojure.string/blank? (:directory options))
+       (main/abort "errors: Failed to validate \"-d \": directory is required and cannot be blank"))
+     (if (clojure.string/blank? (System/getenv "JAVA_HOME"))
+       (main/abort "JAVA_HOME environment variable not set"))
+     (if (not (nil? errors))
+       (main/abort (str "errors: " (clojure.string/join ", " (seq errors)))))
+     (let [selected-directory (:directory options)
+           install-dir (.getAbsolutePath (File. selected-directory))
+           install-directory (str install-dir (if (.endsWith install-dir "/") "" "/"))
+           install-directory-file (File. install-directory)
+           accumulo-instance-name (:instance options)
+           accumulo-root-password (:password options)
+           install-locs-map {:zookeeper (str install-directory deps/zookeeper-version)
+                             :accumulo (str install-directory deps/accumulo-version)
+                             :hadoop (str install-directory deps/hadoop-version)
+                             :spark (str install-directory deps/spark-version)}]
+
+       (main/info "We are going to download the big files in order to not have to check them into git.
+
+                  THIS MAY TAKE A WHILE TO DOWNLOAD THEM!")
+       (check-dependencies)
+
+       (if (true? (:force options))
+         (do
+           (FileUtils/forceMkdir install-directory-file)
+           (FileUtils/cleanDirectory install-directory-file)
+           ))
+
+       (if  (or
+              (and
+                (.exists install-directory-file)
+                (not (-> install-directory-file .list empty?)))
+              (not (.exists install-directory-file)))
+         (main/abort (str install-directory " exists and is not empty use -f to force install")))
+       (main/info (str "Cloud will be installed in: " install-directory "\n\n"))
+       (FileUtils/forceMkdir install-directory-file)
+       (install-storm install-directory install-locs-map)
+       (install-hadoop install-directory install-locs-map)
+       (install-zookeeper install-directory install-locs-map)
+       (install-accumulo install-directory install-locs-map)
+       (install-spark install-directory install-locs-map)
+       (install-scripts install-directory install-locs-map)
+       (main/info "Configuring accumulo!")
+       (configure-accumulo install-directory install-locs-map accumulo-instance-name accumulo-root-password)
+       (main/info "And we're done!")
+       (main/info "You will also need to add the following to your .bashrc (or run it every time you want to start the cloud)")
+       (main/info (str "source " (str install-directory "cloud-install-bash-include.sh")))
+       (main/info (str "You may also need to add your hostname to /etc/hosts; especially if accumulo wont start, ex:"))
+       (main/info (str "127.0.0.1   localhost vrussell Vincents-MacBook-Pro.local Vincents-MacBook-Pro.home"))))))

@@ -22,7 +22,7 @@
 (defn
   download-dependencies
   "download dependencies"
-  [project & args]
+  []
   (let [accumulo-filename (last (clojure.string/split accumulo-location #"/"))]
     (run-command-with-no-args (str "curl " hadoop-location " -o " hadoop-dist-location))
     (run-command-with-no-args (str "curl " zookeeper-location " -o " zookeeper-dist-location  ))
